@@ -12,3 +12,8 @@ Repositori ini berisi implementasi dan materi pendukung **Sistem Berbaasis Penge
 ## 👩‍💻 KONTRIBUTOR
 Puti Nabilah, E22 </br>
 Hanna Malika, E22
+
+</br></br></br>
+
+---
+Error bukan musuh, melainkan pesan dari masa depan - 🤡, 2025
