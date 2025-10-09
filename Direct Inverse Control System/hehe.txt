@@ -161,3 +161,12 @@ class BPNN:
         for x in X:
             outputs.append(self.feedforward(x))
         return np.array(outputs)
+
+
+# pakai default
+W1, b1 = init.initialize("normal")
+print("Normal default:", W1.mean(), W1.std())
+
+# custom mean/std
+W2, b2 = init.initialize("normal", mean=0, std=0.1)
+print("Normal custom:", W2.mean(), W2.std())
