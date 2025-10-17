@@ -1,0 +1,175 @@
+from MyKeras.losses import *
+from MyKeras.activations import *
+
+class NN:
+    def __init__(self):
+        self.layers = []                    # store added layers (object) here
+        self.compiled = False               # flag to check if compiled
+        self.stop_training = False          # flag for early stopping
+    
+    def add(self, layer):
+        self.layers.append(layer)
+
+    def compile(self, optimizer=None, loss='mean_squared_error', lr=0.001):
+        self.optimizer = optimizer
+        self.loss_fn = loss
+        self.loss_fn, self.loss_fn_derivative = get_loss_function(loss)
+        self.lr = lr
+        self.compiled = True  
+
+    def fit(self, X_train, T_train, X_val=None, T_val=None, epochs=10000, tol=1e-3, callbacks=None):
+        self.callbacks = callbacks
+
+        if not self.compiled:
+            raise Exception("You must compile the model before fitting!")
+        
+        history = {"train_loss":[], "val_loss":[]}
+        
+        for epoch in range(epochs):
+            train_loss = 0
+            for i in range(len(X_train)):
+                x = X_train[i]
+                t = T_train[i]
+                
+                # Forward pass
+                a = x
+                for layer in self.layers:
+                    a = layer.forward(a)
+                y_pred = a  
+                train_loss += self.loss_fn(y_pred, t)              
+
+                # Backward pass
+                da = None
+                for i, layer in enumerate(reversed(self.layers)):
+                    if i == 0:
+                        da = layer.backward(da, self.lr, y_true=t, loss=self.loss_fn)
+                    else:
+                        da = layer.backward(da, self.lr)
+            train_loss /= len(X_train)
+            history["train_loss"].append(train_loss)
+                
+            # Validation 
+            if X_val is not None and T_val is not None:
+                val_loss = 0
+                for i in range(len(X_val)):
+                    x = X_val[i]
+                    t = T_val[i]
+                    a = x 
+                    for layer in self.layers:
+                        a = layer.forward(a)
+                    val_loss += self.loss_fn(a, t)
+                val_loss /= len(X_val)
+                history["val_loss"].append(val_loss)
+
+            if callbacks is not None:
+                for cb in callbacks:
+                    if hasattr(cb, "on_epoch_end"):
+                        cb.on_epoch_end(epoch, val_loss, self)
+                        if getattr(cb, 'stop_training', False):
+                            self.stop_training = True
+                            break
+            if self.stop_training:          # if True, break
+                break
+
+            if train_loss < tol:
+                print(f"Training stopped at epoch {epoch+1}, train_loss={train_loss:.6f}")
+                self.best_weights = [copy.deepcopy(layer.__dict__) for layer in self.layers]
+                break
+
+        return history
+
+    def predict(self, X):
+        Y = []
+        for x in X:
+            a = x
+            for layer in self.layers:
+                a = layer.forward(a)
+            Y.append(a)
+        return np.array(Y)
+
+    def get_best_weights(self):
+        if self.callbacks is not None:
+            for cb in self.callbacks:
+                if hasattr(cb, 'best_weights') and cb.best_weights is not None:
+                    return cb.best_weights
+        return getattr(self, "best_weights", None)
+    
+class Dense:
+    def __init__(self, units, activation=None, input_shape=None, initializer=None):
+        self.units = units
+        self.activation_name = activation
+        self.activation = get_activation(self.activation_name)
+        self.activation_derivative = get_activation_derivative(self.activation_name)
+        self.initializer = initializer
+
+        # initialize weights only if input_shape is known (why only initialize at first layer?)
+        if input_shape is not None:
+            self._initialize_weights(input_shape, initializer)       # input_shape should be tuple of integers
+
+    def _initialize_weights(self, input_dim, method):
+        if method == 'he':
+            self.W = np.random.randn(input_dim, self.units) * np.sqrt(2. / input_dim)   # layer1, layer2
+        elif method == 'xavier':
+            self.W = np.random.randn(input_dim, self.units) * np.sqrt(1. / input_dim)
+        elif method == 'lecun':
+            self.W = np.random.randn(input_dim, self.units) * np.sqrt(1. / input_dim)
+        else:
+            self.W = np.random.randn(input_dim, self.units) * 0.01
+        self.b = np.zeros((1, self.units))              # 1, layer2
+        
+    def forward(self, x):
+        # Initialize weights if this isn't the first layer
+        if not hasattr(self, 'W'):
+            self._initialize_weights(x.shape[1], method=self.initializer)
+        self.input = x
+        self.z_in = np.dot(x, self.W) + self.b
+        self.z = self.activation(self.z_in)
+        return self.z
+    
+    def backward(self, da, lr, y_true=None, loss=None):
+        self.loss_fn, self.loss_fn_derivative = get_loss_function(loss)
+        if y_true is not None and loss is not None:
+            dz = self.loss_fn_derivative(self.z, y_true)*self.activation_derivative(self.z_in)
+        else:
+            dz = da * self.activation_derivative(self.z_in)
+
+        dw = np.outer(self.input, dz)
+        db = dz
+        da_prev = np.dot(dz, self.W.T)
+
+        self.W += lr * dw
+        self.b += lr * db
+        return da_prev
+    
+import copy
+    
+class EarlyStopping:
+    def __init__(self, patience=50, min_delta=0, restore_best_weights=True):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.restore_best_weights = restore_best_weights
+
+        self.best_val_loss = float('inf')
+        self.patience_count = 0
+        self.stop_training = False
+        self.best_weights = None
+
+    def on_epoch_end(self, epoch, val_loss, model):
+        # Check improvement
+        if val_loss < self.best_val_loss - self.min_delta:
+            self.best_val_loss = val_loss
+            self.patience_count = 0
+
+            if self.restore_best_weights:
+                self.best_weights = [copy.deepcopy(layer.__dict__) for layer in model.layers]
+        else:
+            self.patience_count += 1
+
+        # If patience exceeded
+        if self.patience_count >= self.patience:
+            print(f"Early stopping at epoch {epoch+1}, val_loss={val_loss:.6f}")
+            self.stop_training = True
+            if self.restore_best_weights and self.best_weights is not None:
+                for layer, best_state in zip(model.layers, self.best_weights):
+                    layer.__dict__.update(best_state)
+                print("Restored best model weights")

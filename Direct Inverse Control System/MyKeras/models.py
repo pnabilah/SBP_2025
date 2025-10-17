@@ -69,19 +69,19 @@ class NN:
                         if getattr(cb, 'stop_training', False):
                             self.stop_training = True
                             break
-            if self.stop_training:          # if True, break
-                break
+                if train_loss < tol:
+                    print(f"Training stopped at epoch {epoch+1}, train_loss={train_loss:.6f}")
+                    self.best_weights = [copy.deepcopy(layer.__dict__) for layer in self.layers]
+                    break
 
-            if train_loss < tol:
-                print(f"Training stopped at epoch {epoch+1}, train_loss={train_loss:.6f}")
-                self.best_weights = [copy.deepcopy(layer.__dict__) for layer in self.layers]
+            if self.stop_training:          # if True, break
                 break
             
             if (epoch+1) % 10 == 0 or epoch == 0:
                 if val_loss is not None:
-                    print(f"Epoch {epoch+1}: train_loss={mse:.6f}, val_loss={val_loss:.6f}")
+                    print(f"Epoch {epoch+1}: train_loss={train_loss:.6f}, val_loss={val_loss:.6f}")
                 else:
-                    print(f"Epoch {epoch+1}: train_loss={mse:.6f}")
+                    print(f"Epoch {epoch+1}: train_loss={train_loss:.6f}")
 
         return history
 
