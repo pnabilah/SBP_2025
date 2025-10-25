@@ -48,3 +48,4 @@ class Dense:
         self.W -= lr * dw
         self.b -= lr * db
         return da_prev
+    
