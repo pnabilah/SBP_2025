@@ -27,6 +27,7 @@ class NN:
         history = {"train_loss":[], "val_loss":[]}
         
         for epoch in range(epochs):
+            # training
             train_loss = 0
             for i in range(len(X_train)):
                 x = X_train[i]
